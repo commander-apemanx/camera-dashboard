@@ -1,0 +1,27 @@
+.venv
+venv
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+.git
+.gitignore
+.vscode
+.idea
+*.log
+
+# Runtime state — mounted as volumes on Unraid
+data/*
+!data/.gitkeep
+Data/*
+!Data/.gitkeep
+
+# Docs / packaging helpers (not needed inside image)
+UNRAID-INSTALL.md
+README.md
+unraid/
+docker-compose.yml
+docker/build-on-unraid.sh
+
+# Large local junk
+**/.DS_Store

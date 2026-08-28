@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>CameraDashboard</Name>
+  <Repository>camera-dashboard:local</Repository>
+  <Registry/>
+  <Network>host</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project>Camera Dashboard</Project>
+  <Overview>
+Local four-camera RTSP/ONVIF dashboard with YOLOv8 person detection, snapshot saving, and a detection photo gallery.
+
+IMPORTANT: This template expects a locally built image named camera-dashboard:local.
+Build it on the Unraid server first (see UNRAID-INSTALL.md). Nothing is pulled from Docker Hub.
+  </Overview>
+  <Category>HomeAutomation:Other MediaApp:Other Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:5000]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/selfhst/icons/main/png/cctv.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>Build local image first: camera-dashboard:local (see UNRAID-INSTALL.md)</Requires>
+
+  <Config Name="Host Port" Target="5000" Default="5000" Mode="tcp" Description="Web UI port (host network uses the PORT variable, not a port mapping)" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+
+  <Config Name="App Config" Target="/app/data" Default="/mnt/user/appdata/camera-dashboard/data" Mode="rw" Description="cameras.json + settings.json" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/camera-dashboard/data</Config>
+
+  <Config Name="Detection Photos" Target="/app/Data" Default="/mnt/user/appdata/camera-dashboard/Data" Mode="rw" Description="Person detection JPEG snapshots" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/camera-dashboard/Data</Config>
+
+  <Config Name="HOST" Target="HOST" Default="0.0.0.0" Mode="rw" Description="Bind address inside container" Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
+
+  <Config Name="PORT" Target="PORT" Default="5000" Mode="rw" Description="Listen port" Type="Variable" Display="always" Required="true" Mask="false">5000</Config>
+
+  <Config Name="Timezone" Target="TZ" Default="Europe/Amsterdam" Mode="rw" Description="Container timezone" Type="Variable" Display="always" Required="false" Mask="false">Europe/Amsterdam</Config>
+
+  <Config Name="RTSP Options" Target="OPENCV_FFMPEG_CAPTURE_OPTIONS" Default="rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000|stimeout;5000000" Mode="rw" Description="OpenCV/FFmpeg RTSP options" Type="Variable" Display="advanced" Required="false" Mask="false">rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000|stimeout;5000000</Config>
+</Container>

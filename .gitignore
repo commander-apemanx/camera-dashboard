@@ -1,0 +1,30 @@
+# Python
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.python-version
+
+# Camera credentials and Flask secret — never commit
+data/cameras.json
+data/.secret_key
+
+# Detection photos
+Data/*
+!Data/.gitkeep
+
+# SSH keys (never commit)
+githubkey
+githubkey.pub
+id_rsa
+id_ed25519
+*.pem
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

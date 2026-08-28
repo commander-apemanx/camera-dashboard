@@ -1,0 +1,13 @@
+flask==3.0.3
+flask-socketio==5.3.6
+flask-cors==4.0.1
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+ultralytics==8.3.49
+eventlet==0.36.1
+python-engineio==4.9.1
+python-socketio==5.11.4
+Pillow==10.4.0
+onvif-zeep==0.2.12
+zeep==4.2.1
+requests==2.32.3

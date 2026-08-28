@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="/static/socket.io.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <h1>Camera Dashboard</h1>
+        <p class="subtitle">RTSP · ONVIF · Person Detection · Localhost</p>
+      </div>
+    </div>
+    <div class="top-meta">
+      <div class="delay-control" title="Detection photo saving">
+        <label class="toggle" title="Enable or disable photo saving">
+          <input id="snapshotEnabled" type="checkbox" checked />
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">Save photos</span>
+        </label>
+        <span class="delay-sep"></span>
+        <label class="delay-field">
+          <span>Delay</span>
+          <input id="snapshotDelay" type="number" min="1" max="600" step="1" value="20" />
+          <span class="delay-unit">sec</span>
+        </label>
+        <button id="btnSaveDelay" class="btn tiny ghost" type="button">Apply</button>
+      </div>
+      <span id="detectorBadge" class="badge warn">Detector loading…</span>
+      <span id="camCount" class="badge">0 / 4 cameras</span>
+      <a class="btn ghost" href="/photos">Detection Photos</a>
+      <button id="btnToggleAdd" class="btn primary" type="button">+ Add Camera Stream</button>
+    </div>
+  </header>
+
+  <section id="addPanel" class="add-panel hidden">
+    <form id="addForm" autocomplete="off">
+      <div class="form-grid">
+        <label>
+          Protocol *
+          <select name="protocol" id="protocolSelect">
+            <option value="rtsp" selected>RTSP</option>
+            <option value="onvif">ONVIF</option>
+          </select>
+        </label>
+        <label>
+          Name
+          <input name="name" type="text" placeholder="Front Door" maxlength="40" />
+        </label>
+        <label>
+          IP Address *
+          <input name="ip" type="text" placeholder="192.168.1.64" required />
+        </label>
+        <label id="portLabel">
+          Port
+          <input name="port" id="portInput" type="number" value="554" min="1" max="65535" />
+        </label>
+        <label>
+          Username
+          <input name="username" type="text" placeholder="admin" />
+        </label>
+        <label>
+          Password
+          <input name="password" type="password" placeholder="••••••••" />
+        </label>
+        <label id="pathLabel">
+          RTSP Path
+          <input name="path" id="pathInput" type="text" placeholder="/stream1" />
+        </label>
+      </div>
+      <p class="hint" id="protocolHint">
+        RTSP URL: <code>rtsp://user:pass@ip:port/path</code>.
+        Examples: <code>/stream1</code>, Hikvision <code>/Streaming/Channels/101</code>,
+        Dahua <code>/cam/realmonitor?channel=1&amp;subtype=0</code>.
+      </p>
+      <div class="form-actions">
+        <button type="button" id="btnTest" class="btn ghost">Test Connection</button>
+        <button type="submit" id="btnAdd" class="btn primary">Add Stream</button>
+        <button type="button" id="btnCancelAdd" class="btn ghost">Cancel</button>
+        <span id="formStatus" class="form-status" role="status" aria-live="polite"></span>
+      </div>
+    </form>
+  </section>
+
+  <main class="layout">
+    <section class="grid" id="cameraGrid" aria-label="Camera streams">
+      <article class="slot empty" data-slot="0"><div>Empty slot 1</div></article>
+      <article class="slot empty" data-slot="1"><div>Empty slot 2</div></article>
+      <article class="slot empty" data-slot="2"><div>Empty slot 3</div></article>
+      <article class="slot empty" data-slot="3"><div>Empty slot 4</div></article>
+    </section>
+
+    <aside class="terminal-panel">
+      <div class="terminal-header">
+        <span>Detection Terminal</span>
+        <div class="terminal-actions">
+          <button id="btnClearLog" class="btn tiny ghost" type="button">Clear</button>
+        </div>
+      </div>
+      <div id="terminal" class="terminal" role="log" aria-live="polite"></div>
+    </aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

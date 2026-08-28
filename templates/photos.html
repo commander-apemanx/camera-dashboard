@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Detection Photos · Camera Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◈</span>
+      <div>
+        <h1>Detection Photos</h1>
+        <p class="subtitle">Person snapshots saved to <code>Data/</code></p>
+      </div>
+    </div>
+    <div class="top-meta">
+      <span id="photoCount" class="badge">0 photos</span>
+      <button id="btnRefresh" class="btn ghost" type="button">Refresh</button>
+      <a class="btn primary" href="/">← Dashboard</a>
+    </div>
+  </header>
+
+  <main class="photos-page">
+    <div class="photos-toolbar">
+      <input id="filterInput" type="search" placeholder="Filter by camera or filename…" />
+      <span id="statusLine" class="muted"></span>
+    </div>
+    <div id="photoList" class="photo-list"></div>
+    <div id="emptyState" class="empty-photos hidden">
+      No detection photos yet. When a person is detected, images are saved here
+      (respecting the photo delay on the dashboard).
+    </div>
+  </main>
+
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true">
+    <button type="button" class="lightbox-close" id="lightboxClose">✕</button>
+    <img id="lightboxImg" alt="Detection photo" />
+    <div id="lightboxCap" class="lightbox-cap"></div>
+  </div>
+
+  <script src="/static/photos.js"></script>
+</body>
+</html>

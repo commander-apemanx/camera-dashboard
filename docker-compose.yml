@@ -1,0 +1,59 @@
+# Camera Dashboard — local image only (not published to any registry).
+#
+# Unraid (SSH), from this folder:
+#   ./docker/build-on-unraid.sh
+#   docker compose up -d
+#
+# First start (build + run):
+#   docker compose up -d --build
+#
+# UI: http://<UNRAID-IP>:5000
+#
+# Host networking is required for reliable LAN RTSP/ONVIF.
+# Bridge mode is documented at the bottom of this file.
+
+name: camera-dashboard
+
+services:
+  camera-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: camera-dashboard:local
+    # Never pull from Docker Hub — this tag exists only on the host.
+    pull_policy: never
+    container_name: camera-dashboard
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    network_mode: host
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5000"
+      TZ: Europe/Amsterdam
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000|stimeout;5000000"
+    volumes:
+      # cameras.json, settings.json, secret key
+      - ./data:/app/data
+      # person-detection JPEGs (folder name is case-sensitive)
+      - ./Data:/app/Data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/api/health"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 120s
+
+# Bridge mode (only if you cannot use host networking):
+#   1. Delete the network_mode: host line
+#   2. Add:
+#        ports:
+#          - "5000:5000"
+#   3. Recreate: docker compose up -d
+# Cameras on the LAN usually still work on a flat home network.
+# Host mode is still recommended on Unraid.
