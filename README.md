@@ -246,6 +246,23 @@ docker compose up -d
 # UI: http://UNRAID-IP:5000
 ```
 
+### Ports on Unraid (Host Port vs container / `PORT`)
+
+Default template uses **Network Type: Host** (recommended for RTSP cameras).
+
+| Unraid field | Meaning |
+|--------------|---------|
+| **Network Type** | Prefer **Host**. The container shares Unraid’s network stack. |
+| **Host Port** | With Host network this does **not** create a Docker port-map. It is mainly for Unraid’s UI / WebUI link. |
+| **Container Port** | Shown as the app’s listen port (default `5000`). Same number as the `PORT` variable. |
+| **PORT** (variable) | **Internal listen port** inside the app — what Camera Dashboard actually binds to. |
+
+**Change the UI port (Host network):** set the **`PORT`** variable (e.g. `8088`), keep **Host** network, then open `http://UNRAID-IP:8088`. Matching Host Port to the same value keeps Unraid’s WebUI button correct.
+
+**Bridge network (optional):** then Host Port ↔ Container Port mapping matters, e.g. Host `8088` → Container `5000`, and leave `PORT=5000` (internal). Example compose style: `"8088:5000"`.
+
+With **Host** network, classic `ports:` mappings are ignored — only **`PORT`** controls where the UI listens.
+
 | File | Role |
 |------|------|
 | `docker-compose.yml` | Pull published GHCR image |

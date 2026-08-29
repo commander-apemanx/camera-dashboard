@@ -29,7 +29,7 @@ To build locally instead, see UNRAID-INSTALL.md and docker-compose.build.yml.
   <DonateLink/>
   <Requires>Published image on GHCR (or build locally — see UNRAID-INSTALL.md)</Requires>
 
-  <Config Name="Host Port" Target="5000" Default="5000" Mode="tcp" Description="Web UI port (host network uses the PORT variable, not a port mapping)" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="Host Port" Target="5000" Default="5000" Mode="tcp" Description="With Host network this is not a Docker port-map — set it equal to PORT so Unraid WebUI matches. With Bridge, this is the external Unraid port (e.g. 8088) mapped to container PORT." Type="Port" Display="always" Required="true" Mask="false">5000</Config>
 
   <Config Name="App Config" Target="/app/data" Default="/mnt/user/appdata/camera-dashboard/data" Mode="rw" Description="cameras.json + settings.json" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/camera-dashboard/data</Config>
 
@@ -37,7 +37,7 @@ To build locally instead, see UNRAID-INSTALL.md and docker-compose.build.yml.
 
   <Config Name="HOST" Target="HOST" Default="0.0.0.0" Mode="rw" Description="Bind address inside container" Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
 
-  <Config Name="PORT" Target="PORT" Default="5000" Mode="rw" Description="Listen port" Type="Variable" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="PORT" Target="PORT" Default="5000" Mode="rw" Description="Internal app listen port. On Host network this IS the LAN port (change here to use e.g. 8088). On Bridge keep 5000 and change Host Port instead." Type="Variable" Display="always" Required="true" Mask="false">5000</Config>
 
   <Config Name="Timezone" Target="TZ" Default="Europe/Amsterdam" Mode="rw" Description="Container timezone" Type="Variable" Display="always" Required="false" Mask="false">Europe/Amsterdam</Config>
 

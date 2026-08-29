@@ -242,17 +242,34 @@ cp /mnt/user/appdata/camera-dashboard/unraid/my-CameraDashboard.xml \
 
 | Setting | Value |
 |---------|--------|
-| Repository | `camera-dashboard:local` |
+| Repository | `ghcr.io/commander-apemanx/camera-dashboard:latest` |
 | Network Type | `Host` |
 | App Config | `/mnt/user/appdata/camera-dashboard/data` → `/app/data` |
 | Detection Photos | `/mnt/user/appdata/camera-dashboard/Data` → `/app/Data` |
-| PORT | `5000` |
+| Host Port | `5000` (keep in sync with `PORT` when using Host network) |
+| Container Port | `5000` (same as app listen / `PORT`) |
+| PORT | `5000` (**internal** listen port — change this to move the UI) |
 | TZ | e.g. `Europe/Amsterdam` |
 
 6. Apply / Start
-7. Open `http://UNRAID-IP:5000`
+7. Open `http://UNRAID-IP:5000` (or whatever you set in **PORT**)
 
-If the template does not appear: **Add Container** manually with repository `camera-dashboard:local`, network **Host**, and the two path binds above. Do not set a Docker Hub registry.
+If the template does not appear: **Add Container** manually with repository `ghcr.io/commander-apemanx/camera-dashboard:latest`, network **Host**, and the two path binds above.
+
+#### Custom port (Unraid template)
+
+With **Network Type = Host** (default):
+
+- Docker **does not** map Host Port → Container Port the way Bridge mode does.
+- Change the **`PORT`** environment variable to the port you want (example: `8088`).
+- Set **Host Port** to the same number so Unraid’s WebUI link stays correct.
+- Browse to `http://UNRAID-IP:8088`.
+
+With **Network Type = Bridge**:
+
+- **Container Port** / `PORT` stay at `5000` (what the app listens on inside the container).
+- **Host Port** is the external port on Unraid (example: `8088`).
+- Mapping is Host `8088` → Container `5000`; open `http://UNRAID-IP:8088`.
 
 ---
 
@@ -305,23 +322,31 @@ network_mode: host
 
 The container then uses Unraid’s network, so `192.168.x.x` RTSP URLs work the same as they do from the Unraid terminal.
 
-With host mode, Compose `ports:` mappings are ignored. `PORT=5000` is the real listen port.
+With host mode, Compose `ports:` mappings are ignored. The **`PORT`** env var is the real listen port on the Unraid host.
+
+| Concept | Host network | Bridge network |
+|---------|--------------|----------------|
+| Where the app listens | Unraid host, port = `PORT` | Inside container, port = `PORT` (usually 5000) |
+| Unraid “Host Port” | Cosmetic / WebUI hint — set equal to `PORT` | Real published port on Unraid |
+| Unraid “Container Port” | Same as `PORT` | Must match `PORT` inside the container |
+| Example custom UI on 8088 | Set `PORT=8088` (and Host Port 8088) | Host Port `8088`, Container/`PORT` `5000` → `8088:5000` |
 
 ### Bridge mode
 
 Only if you cannot use host networking. In `docker-compose.yml`:
 
 1. Remove `network_mode: host`
-2. Uncomment / add:
+2. Uncomment / add (custom host port example):
 
 ```yaml
 ports:
-  - "5000:5000"
+  - "8088:5000"   # host:container — keep container side = PORT (5000)
 ```
 
-3. `docker compose up -d`
+3. Leave `PORT=5000` in environment
+4. `docker compose up -d` → UI at `http://UNRAID-IP:8088`
 
-On a flat home LAN this is often still fine. Host mode is still the default for a reason.
+On a flat home LAN Bridge often still works. Host mode is still the default for RTSP reliability.
 
 ### Camera URL tips
 
