@@ -23,7 +23,7 @@ Releases: https://github.com/commander-apemanx/camera-dashboard/releases
 
 Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Unraid).
 
-**Roadmap:** [ROADMAP.md](ROADMAP.md) — alpha status, more cameras (up to 32), local encryption, security focus. [Issues](https://github.com/commander-apemanx/camera-dashboard/issues) welcome.
+**Roadmap:** [ROADMAP.md](ROADMAP.md) — alpha status + plans for up to 32 cameras, GPU detection (NVIDIA/AMD/Intel), local encryption, and security. [Issues](https://github.com/commander-apemanx/camera-dashboard/issues) welcome.
 
 ---
 

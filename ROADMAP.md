@@ -10,17 +10,15 @@ Plans and direction for Camera Dashboard. Status here is intentional, not a prom
 
 This is a **very young, single-maintainer** project. Treat it like **alpha software**, not something you point at anything you actually rely on for security or critical monitoring.
 
-Today that means, in practice:
+| Reality today | What to expect | How we plan to address it |
+|---------------|----------------|---------------------------|
+| Early repo | Few commits, little adoption yet, no mature tests or heavy issue/PR history | Grow carefully; add automated tests and CI as features land; keep docs honest |
+| **CPU-bound detection** | YOLOv8 on CPU is expensive. Four full HD streams is heavy — prefer **sub-streams** (e.g. Hikvision `102`). Modest CPUs → fan noise / dropped frames | **GPU detection** (NVIDIA, AMD, Intel); default/recommend sub-streams; lighter detect cadence |
+| **Credentials on disk** | Passwords in plaintext `data/cameras.json` (gitignored, **not encrypted at rest**) | **Local encryption** at rest + documented key/backup flow |
+| **No dashboard auth** | Anyone who can reach the port sees UI + streams. Do not expose `:5000` raw to the internet | **Optional login / sessions**; safer bind defaults; reverse-proxy + TLS guidance |
+| **Hard cap of 4 cameras** | Fine for small setups; blocks scale | **Selectable count, up to 32**, with scalable grid and load guidance |
 
-| Reality | What to expect |
-|---------|----------------|
-| Early repo | Few commits, little external adoption yet, no mature test suite or heavy issue/PR history |
-| **CPU-bound detection** | YOLOv8 on CPU is expensive. The README already flags that **four full HD streams is heavy** — prefer camera **sub-streams** (e.g. Hikvision channel `102`) instead of main streams. On a decent NVR-grade Unraid CPU this is manageable; otherwise expect fan noise and dropped frames |
-| **Credentials on disk** | Camera usernames/passwords sit in plaintext `data/cameras.json` (gitignored, **not encrypted at rest**). Fine on a trusted LAN; not something to expose further |
-| **No dashboard auth** | The UI and streams are open to whoever can reach the port. Do **not** expose port **5000** to the internet without a reverse proxy (and your existing access control) in front. Prefer keeping it on the LAN or behind the same gate as your other services — not a raw port-forward |
-| **Hard cap of 4 cameras** | Fine if that matches your setup; a real limitation if you want to scale later (see near-term roadmap) |
-
-If you need a battle-tested NVR/detection stack today, use something mature (e.g. Frigate). This project stays a focused live dashboard + detection helper while it grows.
+If you need a battle-tested NVR/detection stack *today*, use something mature (e.g. Frigate). This project stays a focused live dashboard + detection helper while these gaps close.
 
 ---
 
@@ -28,54 +26,84 @@ If you need a battle-tested NVR/detection stack today, use something mature (e.g
 
 - Up to **4** cameras in a 2×2 live grid
 - RTSP / ONVIF add flow with live probe
-- YOLOv8 person detection, detection terminal, optional snapshots
+- YOLOv8 person detection (**CPU only** today), detection terminal, optional snapshots
 - Docker Compose package (GHCR) and local `./start.sh` package
 - GNU GPLv3
 
 ---
 
-## Near term
+## Near term — addressing known issues
 
-These items exist specifically because of the limitations above.
+### 1. More cameras (selectable, up to 32)
 
-### More cameras (selectable, up to 32)
+**Addresses:** hard 4-camera cap.
 
-Today the hard limit is four. The goal is a **configurable camera count** — choose how many you need, up to **32**.
+- Configurable / selectable camera count (not a fixed `MAX_CAMERAS = 4`)
+- Scalable layouts (3×3, 4×4, or auto) instead of only 2×2
+- Stable multi-stream behavior under load (slot reuse, lower preview FPS)
+- Document CPU/RAM/GPU expectations as count grows
 
-Likely work:
+### 2. GPU-accelerated detection (NVIDIA, AMD, Intel)
 
-- Replace the fixed 2×2 grid with a layout that scales (e.g. 3×3, 4×4, or auto)
-- Per-install max (or UI selector) instead of a single compile-time `MAX_CAMERAS = 4`
-- Keep multi-stream MJPEG stable under higher load (slot reuse, lower preview FPS, sub-stream defaults)
-- Document CPU/RAM expectations as camera count grows
+**Addresses:** CPU-bound detection, fan noise, dropped frames with multiple streams.
 
-### Local encryption
+Goal: run person detection on a GPU when available, with CPU as fallback.
 
-Protect sensitive data **on disk** when the app stores it locally (addressing plaintext `cameras.json`):
+| Vendor | Direction (explore / support) |
+|--------|-------------------------------|
+| **NVIDIA** | CUDA / TensorRT (or Ultralytics CUDA device) — most common for Unraid + discrete GPU |
+| **AMD** | ROCm / compatible PyTorch builds where practical |
+| **Intel** | OpenVINO and/or Intel GPU / iGPU paths (including common Unraid N100/iGPU boxes) |
 
-- Encrypt `data/cameras.json` (credentials) at rest
+Also planned alongside GPU work:
+
+- Auto-detect best device (`cuda` / ROCm / OpenVINO / CPU) with clear UI/log status
+- Docker image variants or docs for GPU passthrough (NVIDIA Container Toolkit, etc.)
+- Keep CPU-only path for machines without a usable GPU
+
+### 3. Sub-streams and stream efficiency (default path)
+
+**Addresses:** “four HD mainstreams is heavy” even before detection.
+
+- Prefer / guide **camera sub-streams** for live view and detection
+- Optional main-stream only when needed (e.g. snapshot quality)
+- Tunable detect interval and preview FPS so many cameras stay usable
+
+### 4. Local encryption
+
+**Addresses:** plaintext credentials (and sensitive snapshots) on disk.
+
+- Encrypt `data/cameras.json` at rest
 - Encrypt or protect detection photos under `Data/` where practical
-- Clear unlock / key setup flow for Docker and `./start.sh` (no cloud key service required)
-- Document backup and key recovery so a lost key does not silently brick a install
+- Unlock / key setup for Docker and `./start.sh` (local only — no cloud KMS required)
+- Backup and key-recovery docs so a lost key does not brick an install silently
 
-### Security-focused hardening
+### 5. Security-focused hardening
 
-Treat the dashboard as a **LAN security appliance**, not a casual toy UI:
+**Addresses:** no dashboard auth; unsafe to expose raw.
 
-- Optional login / session auth before the UI and streams
-- Safer defaults for bind address, headers, and secret handling
-- Review password storage and API surfaces (streams, settings, deletes)
-- Guidance for reverse proxy + TLS when exposing beyond the home LAN
-- Keep credentials and keys out of images, logs, and git (continue current gitignore discipline)
+- Optional login / session before UI and MJPEG streams
+- Safer defaults (bind address, headers, secrets)
+- Review API surfaces (streams, settings, deletes)
+- Document reverse proxy + TLS + “put this behind your existing access control”
+- Keep credentials/keys out of images, logs, and git
+
+### 6. Project maturity (tests, CI, reliability)
+
+**Addresses:** young-repo / no visible tests risk.
+
+- Automated tests for config, settings, and critical API paths
+- CI on GitHub Actions (lint/tests; package publish already exists)
+- Clearer “alpha → beta” criteria before calling anything production-ready for security use
 
 ---
 
 ## Later / explore
 
-- Round-robin or lighter detection to keep many cameras usable on modest CPUs
-- Prefer camera sub-streams for live view; full stream only when needed
-- Role-friendly Unraid / Docker defaults for encrypted data volumes
-- Export / import of camera config (encrypted)
+- Round-robin or lighter models when GPU is absent but camera count is high
+- Encrypted config export / import
+- Unraid-friendly GPU and encrypted-volume defaults
+- Role separation (view-only vs admin) if auth lands
 
 ---
 
@@ -89,9 +117,19 @@ Treat the dashboard as a **LAN security appliance**, not a casual toy UI:
 ## How to contribute an idea
 
 1. Search [existing issues](https://github.com/commander-apemanx/camera-dashboard/issues) first  
-2. Open a new issue with label ideas like `enhancement` or `security`  
-3. Say whether it helps **many cameras**, **encryption**, or **security** so we can place it on this roadmap  
+2. Open a new issue (`enhancement`, `security`, or similar)  
+3. Say whether it helps **cameras / GPU / encryption / security / tests** so we can place it here  
 
-Tracked issues: [#1 cameras](https://github.com/commander-apemanx/camera-dashboard/issues/1) · [#2 encryption](https://github.com/commander-apemanx/camera-dashboard/issues/2) · [#3 security](https://github.com/commander-apemanx/camera-dashboard/issues/3) · [Milestone](https://github.com/commander-apemanx/camera-dashboard/milestone/1)
+### Tracked work
+
+| Theme | Issue |
+|-------|--------|
+| Cameras up to 32 | [#1](https://github.com/commander-apemanx/camera-dashboard/issues/1) |
+| Local encryption | [#2](https://github.com/commander-apemanx/camera-dashboard/issues/2) |
+| Security hardening | [#3](https://github.com/commander-apemanx/camera-dashboard/issues/3) |
+| GPU detection (NVIDIA / AMD / Intel) | [#4](https://github.com/commander-apemanx/camera-dashboard/issues/4) |
+| Sub-streams / stream efficiency | [#5](https://github.com/commander-apemanx/camera-dashboard/issues/5) |
+| Tests and CI | [#6](https://github.com/commander-apemanx/camera-dashboard/issues/6) |
+| Milestone | [Roadmap: scale, GPU, encryption, security](https://github.com/commander-apemanx/camera-dashboard/milestone/1) |
 
 License remains **GNU GPLv3** — see [LICENSE](LICENSE).
