@@ -35,6 +35,7 @@ copy_file() {
 }
 
 copy_file app.py "$STAGE/"
+copy_file auth_vault.py "$STAGE/"
 copy_file requirements.txt "$STAGE/"
 copy_file start.sh "$STAGE/"
 copy_file LICENSE "$STAGE/"

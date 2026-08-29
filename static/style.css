@@ -719,3 +719,64 @@ a.btn {
   color: var(--muted);
   font-style: italic;
 }
+
+/* Auth / login */
+.auth-body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.35rem 1.4rem;
+}
+
+.auth-brand {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  margin-bottom: 1.1rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-form label {
+  text-transform: uppercase;
+}
+
+.panel-title {
+  margin: 0 0 0.85rem;
+  font-size: 1.05rem;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+}
+
+.settings-block {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 0.9rem;
+}
+
+.settings-block h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+}
+
+.settings-toggle {
+  margin-bottom: 0.5rem;
+}

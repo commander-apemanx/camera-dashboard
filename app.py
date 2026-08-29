@@ -16,9 +16,23 @@ from urllib.parse import quote, urlparse, urlunparse
 
 import cv2
 import numpy as np
-from flask import Flask, Response, jsonify, render_template, request, send_from_directory
+from flask import (
+    Flask,
+    Response,
+    has_request_context,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
 from flask_cors import CORS
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, disconnect
+from functools import wraps
+
+from auth_vault import AuthVault, redact_rtsp_url, strip_rtsp_auth
 
 # OpenCV intra-op threads fight YOLO/torch for cores and make the grid stutter.
 cv2.setNumThreads(1)
@@ -28,7 +42,7 @@ except Exception:  # noqa: BLE001
     pass
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
@@ -36,6 +50,9 @@ socketio = SocketIO(
     logger=False,
     engineio_logger=False,
 )
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 14  # 14 days max cookie life
 
 MAX_CAMERAS = 4
 DETECTION_COOLDOWN_SEC = 3.0  # terminal notification throttle
@@ -60,6 +77,7 @@ SNAPSHOT_DIR = os.path.join(ROOT_DIR, "Data")  # person-detection photos
 CAMERAS_FILE = os.path.join(DATA_DIR, "cameras.json")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 PHOTO_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+DEFAULT_UNLOCK_UNTIL_REBOOT = True
 
 # Low-latency RTSP. start.sh / Docker often set only rtsp_transport;tcp — upgrade that.
 FFMPEG_CAPTURE_OPTIONS = (
@@ -112,6 +130,7 @@ def _load_secret_key() -> str:
 
 
 app.config["SECRET_KEY"] = _load_secret_key()
+vault = AuthVault(DATA_DIR)
 
 
 def _safe_name(value: str) -> str:
@@ -285,14 +304,22 @@ class CameraConfig:
     path: str
     protocol: str = "rtsp"  # rtsp | onvif
     rtsp_url: str = ""
+    password_enc: str = ""
     enabled: bool = True
     last_status: str = ""
     last_message: str = ""
 
     def build_url(self) -> str:
+        # Stored rtsp_url must be credential-free; inject live decrypted password.
         if self.rtsp_url:
-            return self.rtsp_url
+            return inject_rtsp_auth(strip_rtsp_auth(self.rtsp_url), self.username, self.password)
         return build_rtsp_url(self.ip, self.port, self.username, self.password, self.path)
+
+    def to_disk_dict(self) -> dict:
+        data = asdict(self)
+        data["password"] = ""
+        data["rtsp_url"] = strip_rtsp_auth(self.rtsp_url or "")
+        return data
 
     @staticmethod
     def from_dict(item: dict) -> "CameraConfig":
@@ -301,9 +328,14 @@ class CameraConfig:
         data.setdefault("protocol", "rtsp")
         data.setdefault("path", "")
         data.setdefault("rtsp_url", "")
+        data.setdefault("password_enc", "")
         data.setdefault("enabled", True)
         data.setdefault("last_status", "")
         data.setdefault("last_message", "")
+        # Never keep plaintext password from disk into memory until vault unlock.
+        if data.get("password_enc"):
+            data["password"] = ""
+        data["rtsp_url"] = strip_rtsp_auth(str(data.get("rtsp_url") or ""))
         return CameraConfig(**data)
 
 
@@ -589,7 +621,6 @@ class CameraWorker:
 
     def _run(self) -> None:
         url = self.config.build_url()
-        self.config.rtsp_url = url
         self.manager.hub.clear(self.config.id)
         self._set_jpeg(self._placeholder("Connecting..."))
 
@@ -708,7 +739,9 @@ class CameraManager:
         self._order: List[str] = []  # stable slot order
         self._snapshot_delay_sec = DEFAULT_SNAPSHOT_DELAY_SEC
         self._snapshot_enabled = True
+        self._unlock_until_reboot = DEFAULT_UNLOCK_UNTIL_REBOOT
         self._settings_lock = threading.Lock()
+        self._legacy_plain: Dict[str, str] = {}
         self._load_settings()
         self._load()
         self.hub.start()
@@ -721,6 +754,10 @@ class CameraManager:
     def snapshot_enabled(self) -> bool:
         return self._snapshot_enabled
 
+    @property
+    def unlock_until_reboot(self) -> bool:
+        return self._unlock_until_reboot
+
     def _load_settings(self) -> None:
         if not os.path.isfile(SETTINGS_FILE):
             self._save_settings()
@@ -731,34 +768,46 @@ class CameraManager:
             delay = float(raw.get("snapshot_delay_sec", DEFAULT_SNAPSHOT_DELAY_SEC))
             self._snapshot_delay_sec = max(MIN_SNAPSHOT_DELAY_SEC, min(MAX_SNAPSHOT_DELAY_SEC, delay))
             self._snapshot_enabled = bool(raw.get("snapshot_enabled", True))
+            self._unlock_until_reboot = bool(raw.get("unlock_until_reboot", DEFAULT_UNLOCK_UNTIL_REBOOT))
         except Exception as exc:  # noqa: BLE001
             print(f"[WARN] Failed to load settings.json: {exc}", flush=True)
             self._snapshot_delay_sec = DEFAULT_SNAPSHOT_DELAY_SEC
             self._snapshot_enabled = True
+            self._unlock_until_reboot = DEFAULT_UNLOCK_UNTIL_REBOOT
 
     def _save_settings(self) -> None:
         os.makedirs(DATA_DIR, exist_ok=True)
         payload = {
             "snapshot_delay_sec": self._snapshot_delay_sec,
             "snapshot_enabled": self._snapshot_enabled,
+            "unlock_until_reboot": self._unlock_until_reboot,
         }
         with open(SETTINGS_FILE, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2)
+        try:
+            os.chmod(SETTINGS_FILE, 0o600)
+        except OSError:
+            pass
 
     def get_settings(self) -> dict:
         return {
             "snapshot_delay_sec": self._snapshot_delay_sec,
             "snapshot_enabled": self._snapshot_enabled,
+            "unlock_until_reboot": self._unlock_until_reboot,
             "min_snapshot_delay_sec": MIN_SNAPSHOT_DELAY_SEC,
             "max_snapshot_delay_sec": MAX_SNAPSHOT_DELAY_SEC,
             "default_snapshot_delay_sec": DEFAULT_SNAPSHOT_DELAY_SEC,
             "snapshot_dir": "Data",
+            "auth_setup": vault.is_setup,
+            "vault_unlocked": vault.unlocked,
+            "session_authenticated": bool(session.get("authenticated")) if has_request_context() else False,
         }
 
     def update_settings(
         self,
         snapshot_delay_sec: Optional[float] = None,
         snapshot_enabled: Optional[bool] = None,
+        unlock_until_reboot: Optional[bool] = None,
     ) -> Tuple[bool, str, dict]:
         with self._settings_lock:
             if snapshot_delay_sec is not None:
@@ -775,9 +824,12 @@ class CameraManager:
                 self._snapshot_delay_sec = val
             if snapshot_enabled is not None:
                 self._snapshot_enabled = bool(snapshot_enabled)
+            if unlock_until_reboot is not None:
+                self._unlock_until_reboot = bool(unlock_until_reboot)
             self._save_settings()
         print(
-            f"[SETTINGS] snapshot_enabled={self._snapshot_enabled} delay={self._snapshot_delay_sec}s",
+            f"[SETTINGS] snapshot_enabled={self._snapshot_enabled} delay={self._snapshot_delay_sec}s "
+            f"unlock_until_reboot={self._unlock_until_reboot}",
             flush=True,
         )
         return True, "Settings updated", self.get_settings()
@@ -866,9 +918,11 @@ class CameraManager:
             with open(CAMERAS_FILE, "r", encoding="utf-8") as fh:
                 raw = json.load(fh)
             for item in raw:
+                plain = str(item.get("password") or "")
                 cfg = CameraConfig.from_dict(item)
-                if not cfg.rtsp_url:
-                    cfg.rtsp_url = cfg.build_url()
+                cfg.password = ""  # never keep disk plaintext in RAM while locked
+                if plain and not cfg.password_enc:
+                    self._legacy_plain[cfg.id] = plain
                 self.cameras[cfg.id] = cfg
                 if cfg.id not in self._order:
                     self._order.append(cfg.id)
@@ -881,12 +935,68 @@ class CameraManager:
         for cid in self._order:
             cfg = self.cameras.get(cid)
             if cfg:
-                payload.append(asdict(cfg))
+                payload.append(cfg.to_disk_dict())
         for cid, cfg in self.cameras.items():
             if cid not in self._order:
-                payload.append(asdict(cfg))
+                payload.append(cfg.to_disk_dict())
         with open(CAMERAS_FILE, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2)
+        try:
+            os.chmod(CAMERAS_FILE, 0o600)
+        except OSError:
+            pass
+
+    def _seal_camera_secret(self, cfg: CameraConfig) -> None:
+        """Encrypt in-memory password onto password_enc when vault is unlocked."""
+        if not vault.unlocked:
+            return
+        if cfg.password:
+            cfg.password_enc = vault.encrypt(cfg.password)
+        cfg.rtsp_url = strip_rtsp_auth(cfg.rtsp_url or "")
+
+    def apply_vault_secrets(self) -> Tuple[bool, str]:
+        """Decrypt password_enc into memory and migrate legacy plaintext."""
+        if not vault.unlocked:
+            return False, "Vault is locked"
+        with self._lock:
+            for cfg in self.cameras.values():
+                if cfg.password_enc:
+                    try:
+                        cfg.password = vault.decrypt(cfg.password_enc)
+                    except Exception as exc:  # noqa: BLE001
+                        return False, f"Decrypt failed for camera {cfg.name}: {exc}"
+                elif cfg.id in self._legacy_plain:
+                    cfg.password = self._legacy_plain.pop(cfg.id)
+                    cfg.password_enc = vault.encrypt(cfg.password)
+                cfg.rtsp_url = strip_rtsp_auth(cfg.rtsp_url or "")
+            self._legacy_plain.clear()
+            self._save()
+        return True, "Camera secrets unlocked"
+
+    def clear_vault_secrets(self) -> None:
+        """Wipe plaintext passwords from memory."""
+        with self._lock:
+            for cfg in self.cameras.values():
+                cfg.password = ""
+
+    def stop_all_workers(self) -> None:
+        with self._lock:
+            workers = list(self.workers.items())
+            self.workers.clear()
+        for _cid, w in workers:
+            w.stop()
+
+    def start_enabled_workers(self) -> None:
+        if not vault.unlocked:
+            return
+        to_start: List[CameraConfig] = []
+        with self._lock:
+            for cid in list(self._order):
+                cfg = self.cameras.get(cid)
+                if cfg and cfg.enabled:
+                    to_start.append(cfg)
+        for cfg in to_start:
+            self._start_worker(cfg)
 
     def start_all(self) -> None:
         def _load_detector() -> None:
@@ -904,16 +1014,15 @@ class CameraManager:
             )
 
         threading.Thread(target=_load_detector, name="yolo-load", daemon=True).start()
-        to_start: List[CameraConfig] = []
-        with self._lock:
-            for cid in list(self._order):
-                cfg = self.cameras.get(cid)
-                if cfg and cfg.enabled and cfg.rtsp_url:
-                    to_start.append(cfg)
-        for cfg in to_start:
-            self._start_worker(cfg)
+        # Camera workers start only after vault unlock (login / setup).
+        if vault.unlocked:
+            self.start_enabled_workers()
+        else:
+            print("[AUTH] Vault locked — camera streams wait until login", flush=True)
 
     def _start_worker(self, cfg: CameraConfig) -> None:
+        if not vault.unlocked:
+            return
         old = self.workers.pop(cfg.id, None)
         if old:
             old.stop()
@@ -935,7 +1044,7 @@ class CameraManager:
                     "ip": cfg.ip,
                     "port": cfg.port,
                     "username": cfg.username,
-                    "password": "••••••••" if cfg.password else "",
+                    "password": "••••••••" if (cfg.password or cfg.password_enc) else "",
                     "path": cfg.path,
                     "protocol": cfg.protocol,
                     "rtsp_url_set": bool(cfg.rtsp_url),
@@ -1021,6 +1130,9 @@ class CameraManager:
         if require_live and not ok:
             return None, False, message
 
+        if not vault.unlocked:
+            return None, False, "Unlock the dashboard vault before adding cameras"
+
         with self._lock:
             if len(self.cameras) >= MAX_CAMERAS:
                 return None, False, f"Maximum of {MAX_CAMERAS} cameras reached"
@@ -1041,16 +1153,17 @@ class CameraManager:
                 password=password or "",
                 path=path or "",
                 protocol=protocol,
-                rtsp_url=url or "",
+                rtsp_url=strip_rtsp_auth(url or ""),
                 enabled=True,
                 last_status="ok" if ok else "error",
                 last_message=message,
             )
+            self._seal_camera_secret(cfg)
             self.cameras[cid] = cfg
             self._order.append(cid)
             self._save()
 
-        if cfg.rtsp_url:
+        if cfg.enabled:
             self._start_worker(cfg)
 
         return cfg, ok, message
@@ -1089,6 +1202,9 @@ class CameraManager:
             if "enabled" in data:
                 cfg.enabled = bool(data["enabled"])
 
+        if not vault.unlocked:
+            return None, "Vault is locked"
+
         url, ok, message = self.resolve_and_probe(
             protocol=cfg.protocol,
             ip=cfg.ip,
@@ -1100,11 +1216,12 @@ class CameraManager:
         should_start = False
         stop_worker: Optional[CameraWorker] = None
         with self._lock:
-            cfg.rtsp_url = url or cfg.rtsp_url
+            cfg.rtsp_url = strip_rtsp_auth(url or cfg.rtsp_url)
             cfg.last_status = "ok" if ok else "error"
             cfg.last_message = message
+            self._seal_camera_secret(cfg)
             self._save()
-            if cfg.enabled and cfg.rtsp_url:
+            if cfg.enabled:
                 should_start = True
             else:
                 stop_worker = self.workers.pop(camera_id, None)
@@ -1124,6 +1241,204 @@ class CameraManager:
 
 
 manager = CameraManager()
+
+
+def _session_ok() -> bool:
+    return bool(session.get("authenticated"))
+
+
+def _auth_public_paths() -> bool:
+    path = request.path or ""
+    if path.startswith("/static/"):
+        return True
+    if path in ("/login", "/setup", "/api/auth/status", "/api/auth/setup", "/api/auth/login"):
+        return True
+    if path == "/api/health":
+        return True
+    return False
+
+
+def login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not vault.is_setup:
+            if request.path.startswith("/api/"):
+                return jsonify({"ok": False, "error": "setup_required"}), 401
+            return redirect(url_for("setup_page"))
+        if not _session_ok():
+            if request.path.startswith("/api/") or request.path.startswith("/stream/"):
+                return jsonify({"ok": False, "error": "auth_required"}), 401
+            return redirect(url_for("login_page"))
+        if not vault.unlocked and not manager.unlock_until_reboot:
+            # Session without vault (should be rare)
+            if request.path.startswith("/api/") or request.path.startswith("/stream/"):
+                return jsonify({"ok": False, "error": "vault_locked"}), 401
+            return redirect(url_for("login_page"))
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+@app.before_request
+def _gate_requests():
+    if _auth_public_paths():
+        return None
+    if request.method == "OPTIONS":
+        return None
+    if not vault.is_setup:
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": "setup_required", "setup_required": True}), 401
+        if request.endpoint not in ("setup_page", "static"):
+            return redirect(url_for("setup_page"))
+        return None
+    if not _session_ok():
+        if request.path.startswith("/api/") or request.path.startswith("/stream/") or request.path.startswith("/Data/"):
+            return jsonify({"ok": False, "error": "auth_required"}), 401
+        return redirect(url_for("login_page"))
+    return None
+
+
+def _establish_session() -> None:
+    session.clear()
+    session["authenticated"] = True
+    session.permanent = True
+
+
+@app.route("/setup", methods=["GET"])
+def setup_page():
+    if vault.is_setup:
+        return redirect(url_for("login_page"))
+    return render_template("login.html", mode="setup")
+
+
+@app.route("/login", methods=["GET"])
+def login_page():
+    if not vault.is_setup:
+        return redirect(url_for("setup_page"))
+    if _session_ok() and vault.unlocked:
+        return redirect(url_for("index"))
+    if _session_ok() and manager.unlock_until_reboot and vault.unlocked:
+        return redirect(url_for("index"))
+    return render_template("login.html", mode="login")
+
+
+@app.route("/api/auth/status")
+def auth_status():
+    return jsonify(
+        {
+            "ok": True,
+            "setup": vault.is_setup,
+            "authenticated": _session_ok(),
+            "vault_unlocked": vault.unlocked,
+            "unlock_until_reboot": manager.unlock_until_reboot,
+        }
+    )
+
+
+@app.route("/api/auth/setup", methods=["POST"])
+def auth_setup():
+    if vault.is_setup:
+        return jsonify({"ok": False, "error": "Already configured"}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    password = str(data.get("password") or "")
+    confirm = str(data.get("confirm") or "")
+    if password != confirm:
+        return jsonify({"ok": False, "error": "Passwords do not match"}), 400
+    ok, message = vault.setup(password)
+    if not ok:
+        return jsonify({"ok": False, "error": message}), 400
+    applied_ok, applied_msg = manager.apply_vault_secrets()
+    if not applied_ok:
+        # Setup still valid; cameras may be empty
+        print(f"[AUTH] setup vault apply: {applied_msg}", flush=True)
+    _establish_session()
+    manager.start_enabled_workers()
+    return jsonify({"ok": True, "message": message, "settings": manager.get_settings()})
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def auth_login():
+    if not vault.is_setup:
+        return jsonify({"ok": False, "error": "setup_required", "setup_required": True}), 400
+    data = request.get_json(force=True, silent=True) or {}
+    password = str(data.get("password") or "")
+    if vault.unlocked and manager.unlock_until_reboot:
+        # Still verify password for a new browser session
+        ok, message = vault.unlock(password)
+        if not ok:
+            return jsonify({"ok": False, "error": message}), 401
+    else:
+        ok, message = vault.unlock(password)
+        if not ok:
+            return jsonify({"ok": False, "error": message}), 401
+        applied_ok, applied_msg = manager.apply_vault_secrets()
+        if not applied_ok:
+            vault.lock()
+            return jsonify({"ok": False, "error": applied_msg}), 500
+        manager.start_enabled_workers()
+    _establish_session()
+    return jsonify({"ok": True, "message": message, "settings": manager.get_settings()})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def auth_logout():
+    session.clear()
+    if not manager.unlock_until_reboot:
+        manager.stop_all_workers()
+        manager.clear_vault_secrets()
+        vault.lock()
+        print("[AUTH] Logged out — vault locked", flush=True)
+    else:
+        print("[AUTH] Logged out — vault stays unlocked until reboot", flush=True)
+    return jsonify({"ok": True, "vault_unlocked": vault.unlocked})
+
+
+@app.route("/api/auth/lock", methods=["POST"])
+def auth_lock():
+    """Force-lock vault (stops streams) even if unlock-until-reboot is on."""
+    session.clear()
+    manager.stop_all_workers()
+    manager.clear_vault_secrets()
+    vault.lock()
+    print("[AUTH] Vault locked manually", flush=True)
+    return jsonify({"ok": True, "vault_unlocked": False})
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+def auth_change_password():
+    if not _session_ok():
+        return jsonify({"ok": False, "error": "auth_required"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    current = str(data.get("current_password") or "")
+    new = str(data.get("new_password") or "")
+    confirm = str(data.get("confirm_password") or "")
+    if new != confirm:
+        return jsonify({"ok": False, "error": "New passwords do not match"}), 400
+    # Ensure vault unlocked with current password first
+    if not vault.unlocked:
+        ok, msg = vault.unlock(current)
+        if not ok:
+            return jsonify({"ok": False, "error": msg}), 401
+        manager.apply_vault_secrets()
+
+    ok, message, old_fernet = vault.change_password(current, new)
+    if not ok:
+        return jsonify({"ok": False, "error": message}), 400
+
+    # Re-encrypt all camera secrets with new key (vault already holds new fernet)
+    with manager._lock:
+        for cfg in manager.cameras.values():
+            plain = cfg.password
+            if not plain and cfg.password_enc and old_fernet is not None:
+                try:
+                    plain = old_fernet.decrypt(cfg.password_enc.encode("ascii")).decode("utf-8")
+                except Exception:  # noqa: BLE001
+                    plain = ""
+            if plain:
+                cfg.password = plain
+                cfg.password_enc = vault.encrypt(plain)
+        manager._save()
+    return jsonify({"ok": True, "message": message})
 
 
 @app.route("/")
@@ -1155,6 +1470,9 @@ def health():
             "snapshot_delay_sec": manager.snapshot_delay_sec,
             "snapshot_enabled": manager.snapshot_enabled,
             "photo_count": manager.photo_count(),
+            "auth_setup": vault.is_setup,
+            "vault_unlocked": vault.unlocked,
+            "authenticated": _session_ok(),
         }
     )
 
@@ -1167,17 +1485,27 @@ def get_settings():
 @app.route("/api/settings", methods=["PUT", "POST"])
 def put_settings():
     data = request.get_json(force=True, silent=True) or {}
-    if "snapshot_delay_sec" not in data and "snapshot_enabled" not in data:
-        return jsonify({"ok": False, "error": "snapshot_delay_sec or snapshot_enabled required"}), 400
+    if (
+        "snapshot_delay_sec" not in data
+        and "snapshot_enabled" not in data
+        and "unlock_until_reboot" not in data
+    ):
+        return jsonify(
+            {"ok": False, "error": "snapshot_delay_sec, snapshot_enabled, or unlock_until_reboot required"}
+        ), 400
 
     delay = data.get("snapshot_delay_sec", None)
     enabled = data.get("snapshot_enabled", None)
+    unlock = data.get("unlock_until_reboot", None)
     if enabled is not None:
         enabled = bool(enabled)
+    if unlock is not None:
+        unlock = bool(unlock)
 
     ok, message, settings = manager.update_settings(
         snapshot_delay_sec=delay,
         snapshot_enabled=enabled,
+        unlock_until_reboot=unlock,
     )
     if not ok:
         return jsonify({"ok": False, "success": False, "error": message, "message": message}), 400
@@ -1271,7 +1599,7 @@ def test_camera():
             "protocol": protocol,
             "message": message,
             "error": None if ok else message,
-            "rtsp_url_preview": (url[:48] + "…") if url and len(url) > 48 else url,
+            "rtsp_url_preview": redact_rtsp_url(url or ""),
         }
     ), (200 if ok else 400)
 
@@ -1350,11 +1678,14 @@ def stream(camera_id: str):
 
 @socketio.on("connect")
 def on_connect():
+    if vault.is_setup and not _session_ok():
+        disconnect()
+        return False
     socketio.emit(
         "status",
         {
             "detector_ready": manager.detector.ready,
-            "cameras": manager.list_public(),
+            "cameras": manager.list_public() if vault.unlocked else [],
             "settings": manager.get_settings(),
         },
     )
@@ -1365,6 +1696,10 @@ def main() -> None:
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "5000"))
     print(f"Camera Dashboard → http://{host}:{port}", flush=True)
+    if not vault.is_setup:
+        print("[AUTH] First run — open /setup to create a dashboard password", flush=True)
+    elif not vault.unlocked:
+        print("[AUTH] Login required to unlock camera credentials", flush=True)
     socketio.run(app, host=host, port=port, debug=False, allow_unsafe_werkzeug=True, use_reloader=False)
 
 

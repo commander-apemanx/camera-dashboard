@@ -12,6 +12,7 @@ __pycache__/
 
 # Camera credentials and Flask secret — never commit
 data/cameras.json
+data/auth.json
 data/.secret_key
 
 # Detection photos

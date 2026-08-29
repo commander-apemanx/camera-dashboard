@@ -33,10 +33,63 @@
       </div>
       <span id="detectorBadge" class="badge warn">Detector loading…</span>
       <span id="camCount" class="badge">0 / 4 cameras</span>
+      <span id="vaultBadge" class="badge warn" title="Credential vault">Vault…</span>
       <a class="btn ghost" href="/photos">Detection Photos</a>
+      <button id="btnSettings" class="btn ghost" type="button">Settings</button>
       <button id="btnToggleAdd" class="btn primary" type="button">+ Add Camera Stream</button>
+      <button id="btnLogout" class="btn ghost" type="button">Log out</button>
     </div>
   </header>
+
+  <section id="settingsPanel" class="add-panel hidden">
+    <h2 class="panel-title">Settings</h2>
+    <div class="settings-grid">
+      <div class="settings-block">
+        <h3>Security</h3>
+        <label class="toggle settings-toggle" title="Keep camera credentials unlocked in memory after logout until the process restarts">
+          <input id="unlockUntilReboot" type="checkbox" checked />
+          <span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+          <span class="toggle-text">Unlock until reboot</span>
+        </label>
+        <p class="hint">
+          When enabled, logging out ends your browser session but keeps the vault unlocked so camera
+          streams continue until the app/container restarts. No Docker master key is used — only this dashboard password.
+        </p>
+        <div class="form-actions">
+          <button type="button" id="btnLockVault" class="btn ghost">Lock vault now</button>
+          <span id="securityStatus" class="form-status" role="status"></span>
+        </div>
+      </div>
+      <div class="settings-block">
+        <h3>Change dashboard password</h3>
+        <form id="changePasswordForm" class="auth-form" autocomplete="off">
+          <label>
+            Current password
+            <input id="cpCurrent" type="password" required minlength="8" />
+          </label>
+          <label>
+            New password
+            <input id="cpNew" type="password" required minlength="8" />
+          </label>
+          <label>
+            Confirm new password
+            <input id="cpConfirm" type="password" required minlength="8" />
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn primary" id="btnChangePassword">Update password</button>
+            <span id="cpStatus" class="form-status" role="status"></span>
+          </div>
+        </form>
+      </div>
+      <div class="settings-block">
+        <h3>Photo saving</h3>
+        <p class="hint">Use the controls in the top bar (Save photos / Delay) — they apply immediately.</p>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button type="button" id="btnCloseSettings" class="btn ghost">Close</button>
+    </div>
+  </section>
 
   <section id="addPanel" class="add-panel hidden">
     <form id="addForm" autocomplete="off">

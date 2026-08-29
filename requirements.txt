@@ -11,3 +11,5 @@ Pillow==10.4.0
 onvif-zeep==0.2.12
 zeep==4.2.1
 requests==2.32.3
+cryptography==43.0.3
+argon2-cffi==23.1.0

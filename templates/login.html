@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ 'Setup' if mode == 'setup' else 'Login' }} · Camera Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="auth-body">
+  <main class="auth-card">
+    <div class="auth-brand">
+      <span class="logo">◈</span>
+      <div>
+        <h1>Camera Dashboard</h1>
+        <p class="subtitle" id="authSubtitle">
+          {% if mode == 'setup' %}
+            Create a dashboard password to encrypt camera credentials.
+          {% else %}
+            Sign in to unlock the vault and open the dashboard.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+    <form id="authForm" class="auth-form" autocomplete="off">
+      <label>
+        Password
+        <input id="password" name="password" type="password" required minlength="8" autofocus />
+      </label>
+      <label id="confirmWrap" class="{% if mode != 'setup' %}hidden{% endif %}">
+        Confirm password
+        <input id="confirm" name="confirm" type="password" minlength="8" {% if mode == 'setup' %}required{% endif %} />
+      </label>
+      <p class="hint">
+        {% if mode == 'setup' %}
+          This password unlocks camera logins stored on disk. There is no separate Docker master key.
+          Choose something strong — losing it means you must re-enter camera passwords after a reset.
+        {% else %}
+          Camera streams stay available after logout if <strong>Unlock until reboot</strong> is enabled in Settings.
+        {% endif %}
+      </p>
+      <div class="form-actions">
+        <button type="submit" class="btn primary" id="authSubmit">
+          {% if mode == 'setup' %}Create password{% else %}Unlock &amp; sign in{% endif %}
+        </button>
+        <span id="authStatus" class="form-status" role="status"></span>
+      </div>
+    </form>
+  </main>
+  <script>
+    window.__AUTH_MODE__ = {{ mode|tojson }};
+  </script>
+  <script src="/static/auth.js"></script>
+</body>
+</html>

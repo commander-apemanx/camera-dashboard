@@ -20,8 +20,32 @@
   const snapshotEnabled = document.getElementById("snapshotEnabled");
   const btnSaveDelay = document.getElementById("btnSaveDelay");
   const delayControl = document.querySelector(".delay-control");
+  const settingsPanel = document.getElementById("settingsPanel");
+  const btnSettings = document.getElementById("btnSettings");
+  const btnCloseSettings = document.getElementById("btnCloseSettings");
+  const btnLogout = document.getElementById("btnLogout");
+  const btnLockVault = document.getElementById("btnLockVault");
+  const unlockUntilReboot = document.getElementById("unlockUntilReboot");
+  const securityStatus = document.getElementById("securityStatus");
+  const vaultBadge = document.getElementById("vaultBadge");
+  const changePasswordForm = document.getElementById("changePasswordForm");
+  const cpStatus = document.getElementById("cpStatus");
 
   const MAX = 4;
+
+  async function apiFetch(url, opts) {
+    const res = await fetch(url, opts);
+    if (res.status === 401) {
+      const data = await res.clone().json().catch(() => ({}));
+      if (data.setup_required || data.error === "setup_required") {
+        window.location.href = "/setup";
+      } else {
+        window.location.href = "/login";
+      }
+      throw new Error("auth");
+    }
+    return res;
+  }
   /** @type {Map<string, object>} cameraId -> last camera meta */
   const known = new Map();
   /** slot index -> cameraId (or null) */
@@ -73,11 +97,23 @@
       delayControl.classList.toggle("disabled-photos", !data.snapshot_enabled);
       snapshotDelay.disabled = !data.snapshot_enabled;
     }
+    if (typeof data.unlock_until_reboot === "boolean" && unlockUntilReboot) {
+      unlockUntilReboot.checked = data.unlock_until_reboot;
+    }
+    if (vaultBadge) {
+      if (data.vault_unlocked) {
+        vaultBadge.textContent = "Vault unlocked";
+        vaultBadge.className = "badge ok";
+      } else {
+        vaultBadge.textContent = "Vault locked";
+        vaultBadge.className = "badge danger";
+      }
+    }
   }
 
   async function loadSettings() {
     try {
-      const res = await fetch("/api/settings");
+      const res = await apiFetch("/api/settings");
       const data = await res.json();
       applySettingsUI(data);
     } catch (_) {
@@ -94,7 +130,7 @@
         snapshot_enabled: !!snapshotEnabled.checked,
         ...partial,
       };
-      const res = await fetch("/api/settings", {
+      const res = await apiFetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -113,6 +149,39 @@
     } finally {
       btnSaveDelay.disabled = false;
       snapshotEnabled.disabled = false;
+    }
+  }
+
+  async function saveUnlockSetting() {
+    if (!unlockUntilReboot) return;
+    securityStatus.textContent = "Saving…";
+    securityStatus.className = "form-status pending";
+    try {
+      const res = await apiFetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unlock_until_reboot: !!unlockUntilReboot.checked }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        securityStatus.textContent = data.error || "Failed";
+        securityStatus.className = "form-status err";
+        await loadSettings();
+        return;
+      }
+      applySettingsUI(data.settings);
+      securityStatus.textContent = data.settings.unlock_until_reboot
+        ? "Unlock until reboot ON"
+        : "Unlock until reboot OFF";
+      securityStatus.className = "form-status ok";
+      log(
+        data.settings.unlock_until_reboot
+          ? "Unlock until reboot enabled"
+          : "Unlock until reboot disabled — logout will lock the vault"
+      );
+    } catch (_) {
+      securityStatus.textContent = "Network error";
+      securityStatus.className = "form-status err";
     }
   }
 
@@ -156,7 +225,7 @@
     if (!btn) return;
     btn.onclick = async () => {
       if (!confirm("Remove this camera stream?")) return;
-      const res = await fetch(`/api/cameras/${camId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/cameras/${camId}`, { method: "DELETE" });
       if (res.ok) {
         log(`Removed camera ${camId}`);
         await refreshCameras(true);
@@ -291,7 +360,7 @@
 
   async function refreshCameras() {
     try {
-      const res = await fetch("/api/cameras");
+      const res = await apiFetch("/api/cameras");
       if (!res.ok) throw new Error("bad status");
       const cameras = await res.json();
       if (!Array.isArray(cameras)) throw new Error("invalid payload");
@@ -303,9 +372,18 @@
 
   async function refreshHealth() {
     try {
-      const res = await fetch("/api/health");
+      const res = await apiFetch("/api/health");
       const data = await res.json();
       setDetectorBadge(data.detector_ready, data.detector_error);
+      if (vaultBadge) {
+        if (data.vault_unlocked) {
+          vaultBadge.textContent = "Vault unlocked";
+          vaultBadge.className = "badge ok";
+        } else {
+          vaultBadge.textContent = "Vault locked";
+          vaultBadge.className = "badge danger";
+        }
+      }
     } catch (_) {
       setDetectorBadge(false, "unreachable");
     }
@@ -313,7 +391,7 @@
 
   async function loadDetections() {
     try {
-      const res = await fetch("/api/detections?limit=100");
+      const res = await apiFetch("/api/detections?limit=100");
       const list = await res.json();
       if (!list.length) {
         terminal.innerHTML = `<div class="empty-hint">Waiting for person detections…</div>`;
@@ -391,7 +469,7 @@
     setBusy(true);
     const body = formBody();
     try {
-      const res = await fetch("/api/cameras/test", {
+      const res = await apiFetch("/api/cameras/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -419,7 +497,7 @@
     const body = formBody();
 
     try {
-      const res = await fetch("/api/cameras", {
+      const res = await apiFetch("/api/cameras", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -483,6 +561,66 @@
     }
   });
 
+  if (btnSettings && settingsPanel) {
+    btnSettings.addEventListener("click", () => {
+      settingsPanel.classList.toggle("hidden");
+      addPanel.classList.add("hidden");
+    });
+  }
+  if (btnCloseSettings && settingsPanel) {
+    btnCloseSettings.addEventListener("click", () => settingsPanel.classList.add("hidden"));
+  }
+  if (unlockUntilReboot) {
+    unlockUntilReboot.addEventListener("change", () => saveUnlockSetting());
+  }
+  if (btnLogout) {
+    btnLogout.addEventListener("click", async () => {
+      await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => null);
+      window.location.href = "/login";
+    });
+  }
+  if (btnLockVault) {
+    btnLockVault.addEventListener("click", async () => {
+      if (!confirm("Lock the vault and stop camera streams until the next login?")) return;
+      await apiFetch("/api/auth/lock", { method: "POST" }).catch(() => null);
+      window.location.href = "/login";
+    });
+  }
+  if (changePasswordForm) {
+    changePasswordForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const current_password = document.getElementById("cpCurrent").value;
+      const new_password = document.getElementById("cpNew").value;
+      const confirm_password = document.getElementById("cpConfirm").value;
+      cpStatus.textContent = "Updating…";
+      cpStatus.className = "form-status pending";
+      try {
+        const res = await apiFetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ current_password, new_password, confirm_password }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          cpStatus.textContent = data.error || "Failed";
+          cpStatus.className = "form-status err";
+          return;
+        }
+        cpStatus.textContent = "Password updated";
+        cpStatus.className = "form-status ok";
+        changePasswordForm.reset();
+        log("Dashboard password updated — camera secrets re-encrypted");
+      } catch (_) {
+        cpStatus.textContent = "Network error";
+        cpStatus.className = "form-status err";
+      }
+    });
+  }
+
+  // Auth-aware fetch for add/test/remove
+  const _fetch = window.fetch.bind(window);
+  // bindRemove / form handlers still use fetch — patch via apiFetch where we already did
+
   terminal.innerHTML = `<div class="empty-hint">Waiting for person detections…</div>`;
   onProtocolChange();
   ensureSlots();
@@ -492,5 +630,5 @@
   loadDetections();
   setInterval(refreshCameras, 3000);
   setInterval(refreshHealth, 5000);
-  log("Dashboard ready on localhost");
+  log("Dashboard ready — vault unlocks camera credentials");
 })();

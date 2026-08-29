@@ -35,6 +35,7 @@ RUN pip install --upgrade pip wheel setuptools \
 
 # Application
 COPY app.py .
+COPY auth_vault.py .
 COPY templates/ ./templates/
 COPY static/ ./static/
 COPY docker/entrypoint.sh /entrypoint.sh

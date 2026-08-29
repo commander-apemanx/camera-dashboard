@@ -103,6 +103,10 @@
     statusLine.textContent = "Loading…";
     try {
       const res = await fetch("/api/photos");
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
       const next = await res.json();
       if (!Array.isArray(next)) {
         statusLine.textContent = "Failed to load photos";

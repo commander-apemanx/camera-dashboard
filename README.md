@@ -25,6 +25,8 @@ Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Un
 
 **Roadmap:** [ROADMAP.md](ROADMAP.md) — alpha status + plans for up to 32 cameras, GPU detection (NVIDIA/AMD/Intel), local encryption, and security. [Issues](https://github.com/commander-apemanx/camera-dashboard/issues) welcome.
 
+**Auth (in progress on `feature/login-vault`):** dashboard password login, encrypted camera credentials at rest, optional unlock-until-reboot — no Docker master key.
+
 ---
 
 ## Features
