@@ -561,11 +561,11 @@ class CameraWorker:
         self._thread.start()
 
     def stop(self) -> None:
+        # Never release VideoCapture from another thread — that segfaults OpenCV/FFmpeg
+        # while cap.read() is blocked. Signal stop and let _run() release in its finally.
         self._stop.set()
-        cap = self._cap
-        _release_capture(cap)
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3.0)
+            self._thread.join(timeout=8.0)
         self._thread = None
         self._cap = None
         self._status = "stopped"
@@ -666,6 +666,8 @@ class CameraWorker:
 
         while not self._stop.is_set():
             ok, frame = cap.read()
+            if self._stop.is_set():
+                return
             if not ok or frame is None or getattr(frame, "size", 0) == 0:
                 fail += 1
                 if fail > READ_FAIL_LIMIT:
@@ -983,8 +985,12 @@ class CameraManager:
         with self._lock:
             workers = list(self.workers.items())
             self.workers.clear()
+        # Stop sequentially so RTSP teardown does not race across cameras.
         for _cid, w in workers:
-            w.stop()
+            try:
+                w.stop()
+            except Exception as exc:  # noqa: BLE001
+                print(f"[WARN] worker stop: {exc}", flush=True)
 
     def start_enabled_workers(self) -> None:
         if not vault.unlocked:
@@ -1397,11 +1403,12 @@ def auth_logout():
 def auth_lock():
     """Force-lock vault (stops streams) even if unlock-until-reboot is on."""
     session.clear()
+    # Stop workers before wiping secrets / locking the vault.
     manager.stop_all_workers()
     manager.clear_vault_secrets()
     vault.lock()
     print("[AUTH] Vault locked manually", flush=True)
-    return jsonify({"ok": True, "vault_unlocked": False})
+    return jsonify({"ok": True, "vault_unlocked": False, "redirect": "/login"})
 
 
 @app.route("/api/auth/change-password", methods=["POST"])

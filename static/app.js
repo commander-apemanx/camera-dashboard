@@ -32,15 +32,29 @@
   const cpStatus = document.getElementById("cpStatus");
 
   const MAX = 4;
+  let camerasTimer = null;
+  let healthTimer = null;
+
+  function goLogin() {
+    if (camerasTimer) clearInterval(camerasTimer);
+    if (healthTimer) clearInterval(healthTimer);
+    camerasTimer = null;
+    healthTimer = null;
+    // Stop MJPEG requests so they do not hit a locking/locked server.
+    document.querySelectorAll("img[data-stream]").forEach((img) => {
+      img.removeAttribute("src");
+    });
+    window.location.replace("/login");
+  }
 
   async function apiFetch(url, opts) {
     const res = await fetch(url, opts);
     if (res.status === 401) {
       const data = await res.clone().json().catch(() => ({}));
       if (data.setup_required || data.error === "setup_required") {
-        window.location.href = "/setup";
+        window.location.replace("/setup");
       } else {
-        window.location.href = "/login";
+        goLogin();
       }
       throw new Error("auth");
     }
@@ -575,15 +589,32 @@
   }
   if (btnLogout) {
     btnLogout.addEventListener("click", async () => {
-      await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => null);
-      window.location.href = "/login";
+      try {
+        await fetch("/api/auth/logout", { method: "POST" });
+      } catch (_) {
+        /* ignore */
+      }
+      goLogin();
     });
   }
   if (btnLockVault) {
     btnLockVault.addEventListener("click", async () => {
       if (!confirm("Lock the vault and stop camera streams until the next login?")) return;
-      await apiFetch("/api/auth/lock", { method: "POST" }).catch(() => null);
-      window.location.href = "/login";
+      btnLockVault.disabled = true;
+      // Stop polling/streams before teardown so the UI cannot race the lock.
+      if (camerasTimer) clearInterval(camerasTimer);
+      if (healthTimer) clearInterval(healthTimer);
+      camerasTimer = null;
+      healthTimer = null;
+      document.querySelectorAll("img[data-stream]").forEach((img) => {
+        img.removeAttribute("src");
+      });
+      try {
+        await fetch("/api/auth/lock", { method: "POST" });
+      } catch (_) {
+        /* still leave the dashboard */
+      }
+      window.location.replace("/login");
     });
   }
   if (changePasswordForm) {
@@ -628,7 +659,8 @@
   refreshCameras();
   refreshHealth();
   loadDetections();
-  setInterval(refreshCameras, 3000);
-  setInterval(refreshHealth, 5000);
+  camerasTimer = setInterval(refreshCameras, 3000);
+  healthTimer = setInterval(refreshHealth, 5000);
+
   log("Dashboard ready — vault unlocks camera credentials");
 })();
