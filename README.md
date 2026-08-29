@@ -23,9 +23,9 @@ Releases: https://github.com/commander-apemanx/camera-dashboard/releases
 
 Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Unraid).
 
-**Roadmap:** [ROADMAP.md](ROADMAP.md) — alpha status + plans for up to 32 cameras, GPU detection (NVIDIA/AMD/Intel), local encryption, and security. [Issues](https://github.com/commander-apemanx/camera-dashboard/issues) welcome.
+On first visit you are sent to **Setup** / **Login**: create a dashboard password, then sign in to unlock the camera vault.
 
-**Auth (in progress on `feature/login-vault`):** dashboard password login, encrypted camera credentials at rest, optional unlock-until-reboot — no Docker master key.
+**Roadmap:** [ROADMAP.md](ROADMAP.md) — alpha status + plans for up to 32 cameras, GPU detection (NVIDIA/AMD/Intel), Areas pages, and more. [Issues](https://github.com/commander-apemanx/camera-dashboard/issues) welcome.
 
 ---
 
@@ -37,6 +37,7 @@ Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Un
 - Detection log in the side terminal and in server logs
 - Optional detection photos under `Data/`, gallery at `/photos`
 - Max **4** cameras (see roadmap for selectable / up to 32)
+- **Login page** and encrypted camera credentials (see [Security](#security--login))
 
 ---
 
