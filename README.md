@@ -1,4 +1,5 @@
 # Camera Dashboard
+<img width="692" height="190" alt="image" src="https://github.com/user-attachments/assets/836c80d2-402c-479e-84a2-a4b443624af3" />
 
 Private four-camera **RTSP / ONVIF** dashboard with **YOLOv8 person detection**, a live detection terminal, and optional snapshot saving.
 
