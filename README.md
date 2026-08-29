@@ -1,6 +1,14 @@
 # Camera Dashboard
 <img width="692" height="190" alt="image" src="https://github.com/user-attachments/assets/836c80d2-402c-479e-84a2-a4b443624af3" />
 
+<img width="725" height="152" alt="image" src="https://github.com/user-attachments/assets/89333a77-6a79-4505-8a55-34a80eb83918" />
+
+<img width="274" height="98" alt="image" src="https://github.com/user-attachments/assets/37f53e5a-7886-4230-9926-0eee22286c8d" />
+
+<img width="727" height="214" alt="image" src="https://github.com/user-attachments/assets/0d8b8ba8-35ef-4e42-9c1b-245b4d07d67e" />
+
+
+
 Private four-camera **RTSP / ONVIF** dashboard with **YOLOv8 person detection**, a live detection terminal, and optional snapshot saving.
 
 Built to run on a home Linux box or an **Unraid** server. The Docker image is built locally — nothing is pushed to Docker Hub.
