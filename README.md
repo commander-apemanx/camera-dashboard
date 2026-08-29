@@ -154,6 +154,8 @@ The dashboard is password-protected. Camera credentials are **encrypted at rest*
 2. Enter your dashboard password  
 3. The vault unlocks, camera secrets are decrypted in memory, and streams can start  
 
+After the **app/container restarts**, you must log in again even if the browser still has an old cookie. Access requires **both** a valid session and an unlocked vault (the vault key exists only in process memory).  
+
 ### What is protected
 
 | Item | How it is stored |

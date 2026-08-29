@@ -54,6 +54,7 @@
       if (data.setup_required || data.error === "setup_required") {
         window.location.replace("/setup");
       } else {
+        // Includes vault_locked after process restart with a stale cookie.
         goLogin();
       }
       throw new Error("auth");

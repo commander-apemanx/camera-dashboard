@@ -30,8 +30,6 @@ from flask import (
 )
 from flask_cors import CORS
 from flask_socketio import SocketIO, disconnect
-from functools import wraps
-
 from auth_vault import AuthVault, redact_rtsp_url, strip_rtsp_auth
 
 # OpenCV intra-op threads fight YOLO/torch for cores and make the grid stutter.
@@ -1253,6 +1251,17 @@ def _session_ok() -> bool:
     return bool(session.get("authenticated"))
 
 
+def _access_ok() -> bool:
+    """Browser may keep a cookie after restart; vault unlock lives only in process memory."""
+    return _session_ok() and vault.unlocked
+
+
+def _clear_stale_session_if_vault_locked() -> None:
+    """Drop cookies that survived a process restart while the vault did not."""
+    if _session_ok() and not vault.unlocked:
+        session.clear()
+
+
 def _auth_public_paths() -> bool:
     path = request.path or ""
     if path.startswith("/static/"):
@@ -1264,25 +1273,10 @@ def _auth_public_paths() -> bool:
     return False
 
 
-def login_required(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if not vault.is_setup:
-            if request.path.startswith("/api/"):
-                return jsonify({"ok": False, "error": "setup_required"}), 401
-            return redirect(url_for("setup_page"))
-        if not _session_ok():
-            if request.path.startswith("/api/") or request.path.startswith("/stream/"):
-                return jsonify({"ok": False, "error": "auth_required"}), 401
-            return redirect(url_for("login_page"))
-        if not vault.unlocked and not manager.unlock_until_reboot:
-            # Session without vault (should be rare)
-            if request.path.startswith("/api/") or request.path.startswith("/stream/"):
-                return jsonify({"ok": False, "error": "vault_locked"}), 401
-            return redirect(url_for("login_page"))
-        return fn(*args, **kwargs)
-
-    return wrapper
+def _deny_unauthenticated(reason: str = "auth_required"):
+    if request.path.startswith("/api/") or request.path.startswith("/stream/") or request.path.startswith("/Data/"):
+        return jsonify({"ok": False, "error": reason, "vault_unlocked": vault.unlocked}), 401
+    return redirect(url_for("login_page"))
 
 
 @app.before_request
@@ -1297,10 +1291,12 @@ def _gate_requests():
         if request.endpoint not in ("setup_page", "static"):
             return redirect(url_for("setup_page"))
         return None
-    if not _session_ok():
-        if request.path.startswith("/api/") or request.path.startswith("/stream/") or request.path.startswith("/Data/"):
-            return jsonify({"ok": False, "error": "auth_required"}), 401
-        return redirect(url_for("login_page"))
+
+    _clear_stale_session_if_vault_locked()
+
+    if not _access_ok():
+        reason = "vault_locked" if not vault.unlocked else "auth_required"
+        return _deny_unauthenticated(reason)
     return None
 
 
@@ -1321,9 +1317,9 @@ def setup_page():
 def login_page():
     if not vault.is_setup:
         return redirect(url_for("setup_page"))
-    if _session_ok() and vault.unlocked:
-        return redirect(url_for("index"))
-    if _session_ok() and manager.unlock_until_reboot and vault.unlocked:
+    _clear_stale_session_if_vault_locked()
+    # Only skip login when both cookie session and in-memory vault are valid.
+    if _access_ok():
         return redirect(url_for("index"))
     return render_template("login.html", mode="login")
 
@@ -1336,6 +1332,7 @@ def auth_status():
             "setup": vault.is_setup,
             "authenticated": _session_ok(),
             "vault_unlocked": vault.unlocked,
+            "access_ok": _access_ok(),
             "unlock_until_reboot": manager.unlock_until_reboot,
         }
     )
@@ -1413,7 +1410,7 @@ def auth_lock():
 
 @app.route("/api/auth/change-password", methods=["POST"])
 def auth_change_password():
-    if not _session_ok():
+    if not _access_ok():
         return jsonify({"ok": False, "error": "auth_required"}), 401
     data = request.get_json(force=True, silent=True) or {}
     current = str(data.get("current_password") or "")
@@ -1685,7 +1682,7 @@ def stream(camera_id: str):
 
 @socketio.on("connect")
 def on_connect():
-    if vault.is_setup and not _session_ok():
+    if vault.is_setup and not _access_ok():
         disconnect()
         return False
     socketio.emit(
