@@ -19,8 +19,8 @@ echo
 echo "[OK] Image ready: $IMAGE_NAME"
 echo
 echo "Next (from $ROOT):"
-echo "  A) docker compose up -d"
-echo "     (first time you can also: docker compose up -d --build)"
+echo "  A) docker compose -f docker-compose.build.yml up -d"
+echo "     (published pull instead: docker compose up -d)"
 echo "  B) Unraid Docker UI + unraid/my-CameraDashboard.xml"
 echo "  See UNRAID-INSTALL.md"
 echo "  Web UI: http://<UNRAID-IP>:5000"

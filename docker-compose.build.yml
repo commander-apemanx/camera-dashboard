@@ -1,0 +1,39 @@
+# Camera Dashboard — build the image locally (no registry pull).
+#
+#   docker compose -f docker-compose.build.yml up -d --build
+#
+# For the published image from GHCR, use docker-compose.yml instead.
+
+name: camera-dashboard
+
+services:
+  camera-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: camera-dashboard:local
+    pull_policy: never
+    container_name: camera-dashboard
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    network_mode: host
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "5000"
+      TZ: Europe/Amsterdam
+      OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000|stimeout;5000000"
+    volumes:
+      - ./data:/app/data
+      - ./Data:/app/Data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:5000/api/health"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 120s

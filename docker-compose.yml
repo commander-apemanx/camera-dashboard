@@ -1,27 +1,24 @@
-# Camera Dashboard — local image only (not published to any registry).
+# Camera Dashboard — published Docker Compose package
 #
-# Unraid (SSH), from this folder:
-#   ./docker/build-on-unraid.sh
+# Pulls the pre-built image from GitHub Container Registry (no local build).
+#
+#   mkdir camera-dashboard && cd camera-dashboard
+#   curl -fsSL -o docker-compose.yml \
+#     https://raw.githubusercontent.com/commander-apemanx/camera-dashboard/v1.0.2/docker-compose.yml
+#   mkdir -p data Data
 #   docker compose up -d
 #
-# First start (build + run):
-#   docker compose up -d --build
+# Pin a version:  CAMERA_DASHBOARD_TAG=v1.0.2 docker compose up -d
+# UI: http://127.0.0.1:5000  or  http://UNRAID-IP:5000
 #
-# UI: http://<UNRAID-IP>:5000
-#
-# Host networking is required for reliable LAN RTSP/ONVIF.
-# Bridge mode is documented at the bottom of this file.
+# To build the image yourself instead, use: docker-compose.build.yml
 
 name: camera-dashboard
 
 services:
   camera-dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: camera-dashboard:local
-    # Never pull from Docker Hub — this tag exists only on the host.
-    pull_policy: never
+    image: ghcr.io/commander-apemanx/camera-dashboard:${CAMERA_DASHBOARD_TAG:-latest}
+    pull_policy: always
     container_name: camera-dashboard
     restart: unless-stopped
     init: true
@@ -33,9 +30,7 @@ services:
       TZ: Europe/Amsterdam
       OPENCV_FFMPEG_CAPTURE_OPTIONS: "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000|stimeout;5000000"
     volumes:
-      # cameras.json, settings.json, secret key
       - ./data:/app/data
-      # person-detection JPEGs (folder name is case-sensitive)
       - ./Data:/app/Data
     logging:
       driver: json-file
@@ -55,5 +50,3 @@ services:
 #        ports:
 #          - "5000:5000"
 #   3. Recreate: docker compose up -d
-# Cameras on the LAN usually still work on a flat home network.
-# Host mode is still recommended on Unraid.

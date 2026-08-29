@@ -9,9 +9,17 @@
 
 
 
-Private four-camera **RTSP / ONVIF** dashboard with **YOLOv8 person detection**, a live detection terminal, and optional snapshot saving.
+Four-camera **RTSP / ONVIF** dashboard with **YOLOv8 person detection**, a live detection terminal, and optional snapshot saving.
 
-Built to run on a home Linux box or an **Unraid** server. The Docker image is built locally — nothing is pushed to Docker Hub.
+Runs on a home Linux box or **Unraid**. Two published packages are available on each release:
+
+| Package | What it is | Install |
+|---------|------------|---------|
+| **Docker Compose** | Pre-built image on GHCR | `docker compose up -d` with `docker-compose.yml` |
+| **Local `.sh`** | Source tarball + `./start.sh` | Download release asset, extract, run `./start.sh` |
+
+Image: `ghcr.io/commander-apemanx/camera-dashboard`  
+Releases: https://github.com/commander-apemanx/camera-dashboard/releases
 
 Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Unraid).
 
@@ -37,9 +45,77 @@ Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Un
 
 ---
 
-## Quick start (Linux, no Docker)
+## Package 1 — Docker Compose (published image)
+
+Pulls `ghcr.io/commander-apemanx/camera-dashboard` — no local image build.
 
 ```bash
+mkdir -p camera-dashboard/data camera-dashboard/Data
+cd camera-dashboard
+curl -fsSL -o docker-compose.yml \
+  https://raw.githubusercontent.com/commander-apemanx/camera-dashboard/main/docker-compose.yml
+docker compose up -d
+docker compose logs -f
+```
+
+Pin a release tag:
+
+```bash
+CAMERA_DASHBOARD_TAG=v1.0.2 docker compose up -d
+```
+
+UI: **http://127.0.0.1:5000** or **http://UNRAID-IP:5000**
+
+Stop / restart:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+| Setting | Value |
+|---------|--------|
+| Image | `ghcr.io/commander-apemanx/camera-dashboard:latest` (or a `v*` tag) |
+| Network | **host** (best for LAN cameras) |
+| Port | `5000` |
+| Config volume | `./data` → `/app/data` |
+| Photos volume | `./Data` → `/app/Data` |
+
+To **build locally** instead of pulling: `docker compose -f docker-compose.build.yml up -d --build`
+
+### Environment
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `HOST` | `0.0.0.0` in Docker, `127.0.0.1` in `./start.sh` | Bind address |
+| `PORT` | `5000` | Listen port |
+| `TZ` | `Europe/Amsterdam` | Container timezone (photo timestamps) |
+| `OPENCV_FFMPEG_CAPTURE_OPTIONS` | TCP RTSP + low-latency flags | FFmpeg capture options |
+| `SECRET_KEY` | auto-written to `data/.secret_key` | Flask secret |
+| `CAMERA_DASHBOARD_TAG` | `latest` | Image tag for Compose |
+
+---
+
+## Package 2 — Local run (`./start.sh`)
+
+### From a release asset (recommended)
+
+1. Open [Releases](https://github.com/commander-apemanx/camera-dashboard/releases)
+2. Download `camera-dashboard-vX.Y.Z-local.tar.gz`
+3. Extract and start:
+
+```bash
+tar -xzf camera-dashboard-v1.0.2-local.tar.gz
+cd camera-dashboard-v1.0.2-local
+chmod +x start.sh
+./start.sh
+```
+
+### From a git clone
+
+```bash
+git clone https://github.com/commander-apemanx/camera-dashboard.git
+cd camera-dashboard
 chmod +x start.sh
 ./start.sh
 ```
@@ -102,73 +178,27 @@ Do not commit `data/cameras.json`. It holds camera passwords.
 
 ---
 
-## Docker Compose
-
-From this project folder (Linux or Unraid):
-
-```bash
-# First run: build the local image, then start
-docker compose up -d --build
-
-docker compose logs -f
-```
-
-UI: **http://127.0.0.1:5000** on a PC, or **http://UNRAID-IP:5000** on Unraid.
-
-Stop / restart:
-
-```bash
-docker compose down
-docker compose up -d
-```
-
-Defaults in `docker-compose.yml`:
-
-| Setting | Value |
-|---------|--------|
-| Image | `camera-dashboard:local` (built here, never pulled) |
-| Network | **host** (best for LAN cameras) |
-| Port | `5000` |
-| Config volume | `./data` → `/app/data` |
-| Photos volume | `./Data` → `/app/Data` |
-| Restart | `unless-stopped` |
-
-The compose file sets `pull_policy: never` so Docker will not look up `camera-dashboard` on Docker Hub.
-
-### Environment
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `HOST` | `0.0.0.0` in Docker, `127.0.0.1` in `./start.sh` | Bind address |
-| `PORT` | `5000` | Listen port |
-| `TZ` | `Europe/Amsterdam` | Container timezone (photo timestamps) |
-| `OPENCV_FFMPEG_CAPTURE_OPTIONS` | TCP RTSP + low-latency flags | FFmpeg capture options |
-| `SECRET_KEY` | auto-written to `data/.secret_key` | Flask secret |
-
----
-
 ## Unraid
 
-This project is packaged for a **private Unraid server**. Full copy / build / template / plugin steps:
+Full Unraid guide: **[UNRAID-INSTALL.md](UNRAID-INSTALL.md)**
 
-**[UNRAID-INSTALL.md](UNRAID-INSTALL.md)** — Unraid README + install guide
-
-Short path:
+**Fast path (published Docker package):**
 
 ```bash
-# copy this folder to Unraid, then SSH:
+mkdir -p /mnt/user/appdata/camera-dashboard/{data,Data}
 cd /mnt/user/appdata/camera-dashboard
-chmod +x docker/build-on-unraid.sh docker/entrypoint.sh start.sh
-./docker/build-on-unraid.sh
+curl -fsSL -o docker-compose.yml \
+  https://raw.githubusercontent.com/commander-apemanx/camera-dashboard/main/docker-compose.yml
 docker compose up -d
 # UI: http://UNRAID-IP:5000
 ```
 
 | File | Role |
 |------|------|
-| `Dockerfile` | Local image build |
-| `docker-compose.yml` | Host network + volume mounts |
-| `docker/build-on-unraid.sh` | Build helper |
+| `docker-compose.yml` | Pull published GHCR image |
+| `docker-compose.build.yml` | Build image on the Unraid host |
+| `Dockerfile` | Image definition |
+| `docker/build-on-unraid.sh` | Local build helper |
 | `docker/entrypoint.sh` | Container start |
 | `unraid/my-CameraDashboard.xml` | Unraid **Add Container** template |
 

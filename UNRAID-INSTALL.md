@@ -123,21 +123,29 @@ If you already have a working `data/cameras.json` from a PC install, copy that f
 
 ---
 
-### Step 2 — Build the local image (on Unraid)
+### Step 2 — Get the Docker image (pick one)
 
-SSH into Unraid (or use the web terminal):
+#### Option A — Pull the published package (recommended)
+
+No local build. Uses GitHub Container Registry:
+
+```bash
+ssh root@UNRAID-IP
+cd /mnt/user/appdata/camera-dashboard
+# ensure docker-compose.yml is the published one from this repo
+docker compose pull
+```
+
+Image: `ghcr.io/commander-apemanx/camera-dashboard:latest` (or set `CAMERA_DASHBOARD_TAG=v1.0.2`).
+
+#### Option B — Build the local image on Unraid
 
 ```bash
 ssh root@UNRAID-IP
 cd /mnt/user/appdata/camera-dashboard
 ./docker/build-on-unraid.sh
-```
-
-Same thing manually:
-
-```bash
-cd /mnt/user/appdata/camera-dashboard
-docker build -t camera-dashboard:local .
+# or:
+docker compose -f docker-compose.build.yml build
 ```
 
 The first build downloads Python wheels and can take a long time. When it finishes:
@@ -146,7 +154,7 @@ The first build downloads Python wheels and can take a long time. When it finish
 docker images | grep camera-dashboard
 ```
 
-You should see `camera-dashboard` with tag `local`.
+You should see either `ghcr.io/commander-apemanx/camera-dashboard` or `camera-dashboard:local`.
 
 `docker-compose.yml` sets `pull_policy: never` so Compose will **not** try to download this name from Docker Hub.
 
@@ -160,14 +168,14 @@ From the project folder on Unraid:
 
 ```bash
 cd /mnt/user/appdata/camera-dashboard
-docker compose up -d
+docker compose up -d          # pulls ghcr.io/commander-apemanx/camera-dashboard
 docker compose logs -f
 ```
 
-If the image is not built yet, build and start in one step:
+Build on the host instead of pulling:
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.build.yml up -d --build
 ```
 
 If Unraid only has the old binary:
@@ -184,9 +192,9 @@ docker compose down
 docker compose up -d
 ```
 
-Compose defaults:
+Compose defaults (`docker-compose.yml`):
 
-- Image: `camera-dashboard:local`
+- Image: `ghcr.io/commander-apemanx/camera-dashboard:latest`
 - Network: **host** (container uses the Unraid LAN stack — this is what RTSP needs)
 - Port: **5000**
 - Volumes: `./data` → `/app/data`, `./Data` → `/app/Data`

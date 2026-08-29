@@ -1,5 +1,6 @@
-# Camera Dashboard — local Unraid / Docker image (not published)
-# Build on the Unraid host (or any Linux Docker host), do not push to a registry.
+# Camera Dashboard — Docker image
+# Published to: ghcr.io/commander-apemanx/camera-dashboard
+# Local build: docker compose -f docker-compose.build.yml build
 
 FROM python:3.11-slim-bookworm
 

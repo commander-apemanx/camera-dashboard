@@ -1,3 +1,6 @@
+# Build artifacts
+dist/
+
 # Python
 .venv/
 venv/
