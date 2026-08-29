@@ -181,3 +181,9 @@ docker compose up -d
 - Do not publish port 5000 to the public internet without a reverse proxy and auth.
 - Person detection uses CPU. Four HD main-streams is heavy; a camera **sub-stream** (e.g. Hikvision channel `102`) is easier on the server.
 - Passwords are stored in `data/cameras.json`.
+
+---
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
