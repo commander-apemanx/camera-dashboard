@@ -23,6 +23,8 @@ Releases: https://github.com/commander-apemanx/camera-dashboard/releases
 
 Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Unraid).
 
+**Roadmap:** [ROADMAP.md](ROADMAP.md) — more cameras (up to 32), local encryption, security focus. [Issues](https://github.com/commander-apemanx/camera-dashboard/issues) welcome.
+
 ---
 
 ## Features
@@ -32,7 +34,7 @@ Open **http://127.0.0.1:5000** (local) or **http://UNRAID-IP:5000** (Docker / Un
 - Person boxes via YOLOv8n
 - Detection log in the side terminal and in server logs
 - Optional detection photos under `Data/`, gallery at `/photos`
-- Max **4** cameras
+- Max **4** cameras (see roadmap for selectable / up to 32)
 
 ---
 
