@@ -80,5 +80,6 @@ Docker users: prefer the published image —
 EOF
 
 tar -C "$TMP" -czf "$ARCHIVE" "$NAME"
+ls -lh "$ARCHIVE" >&2
+# stdout must be only the archive path (used by CI)
 echo "$ARCHIVE"
-ls -lh "$ARCHIVE"
