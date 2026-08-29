@@ -125,7 +125,7 @@ chmod +x start.sh
 ./start.sh
 ```
 
-Open **http://127.0.0.1:5000**
+Open **http://127.0.0.1:5000** — first run opens **Setup** to create your dashboard password.
 
 Optional bind:
 
@@ -137,9 +137,53 @@ HOST=127.0.0.1 PORT=5000 ./start.sh
 
 ---
 
+## Security & login
+
+The dashboard is password-protected. Camera credentials are **encrypted at rest** — there is **no Docker/env master key**. Your dashboard login password unlocks the vault.
+
+### First run (Setup)
+
+1. Start the app and open the UI  
+2. You are redirected to **`/setup`**  
+3. Choose a dashboard password (at least 8 characters) and confirm it  
+4. That creates `data/auth.json` (password hash + vault salt) and unlocks the vault  
+
+### Later visits (Login)
+
+1. Open the UI → **`/login`**  
+2. Enter your dashboard password  
+3. The vault unlocks, camera secrets are decrypted in memory, and streams can start  
+
+### What is protected
+
+| Item | How it is stored |
+|------|------------------|
+| Dashboard password | Argon2 hash in `data/auth.json` (never plaintext) |
+| Camera passwords | Encrypted (`password_enc`) in `data/cameras.json` |
+| RTSP URLs on disk | Stored **without** `user:pass@` — credentials are injected only in memory after unlock |
+
+Legacy plaintext `cameras.json` from older installs is migrated to encrypted form on first unlock.
+
+### Settings (in the UI)
+
+Open **Settings** on the dashboard:
+
+- **Unlock until reboot** — log out ends your browser session, but the vault can stay unlocked so streams keep running until the app/container restarts  
+- **Lock vault now** — wipe secrets from memory, stop streams, return to the login page  
+- **Change dashboard password** — re-encrypts all camera secrets under the new password  
+
+### Still important
+
+- Do **not** expose port 5000 to the public internet without a reverse proxy (and preferably TLS)  
+- Someone who knows the dashboard password can unlock the vault  
+- While unlocked, camera passwords exist in process memory (required for RTSP)  
+- Host/root compromise can still read memory — encryption protects **files on disk**, not a fully compromised server  
+
+---
+
 ## Add cameras
 
-Use **+ Add Camera Stream**. A camera is saved only if a live frame can be read.
+Sign in first, then use **+ Add Camera Stream**. A camera is saved only if a live frame can be read.
 
 ### RTSP
 
@@ -172,14 +216,16 @@ ONVIF discovers the RTSP URI, then the same live probe runs.
 
 | Path | Contents |
 |------|----------|
-| `data/cameras.json` | Camera config (includes passwords — **gitignored**, keep private) |
-| `data/cameras.example.json` | Empty starter file you can copy to `cameras.json` |
-| `data/settings.json` | Photo save on/off and delay |
+| `data/auth.json` | Dashboard password hash + vault salt (**gitignored**) |
+| `data/cameras.json` | Camera config with **encrypted** passwords (`password_enc`) — gitignored |
+| `data/cameras.example.json` | Empty starter file |
+| `data/settings.json` | Photo save on/off, delay, unlock-until-reboot |
+| `data/.secret_key` | Flask session secret (gitignored) |
 | `Data/` | Person-detection JPEGs (gitignored) |
 
-Those two folder names differ only by case. Create them from a Linux/Unraid terminal, not from Windows Explorer.
+Those two folder names (`data` / `Data`) differ only by case. Create them from a Linux/Unraid terminal, not from Windows Explorer.
 
-Do not commit `data/cameras.json`. It holds camera passwords.
+Do not commit `data/auth.json` or `data/cameras.json`. Camera passwords are encrypted on disk, but the files are still private to your install.
 
 ---
 
@@ -213,9 +259,9 @@ docker compose up -d
 
 - Local `./start.sh` binds to **localhost** (`127.0.0.1`) by default.
 - Docker / Unraid binds to **`0.0.0.0:5000`** so other devices on the LAN can open the UI.
-- Do not publish port 5000 to the public internet without a reverse proxy and auth.
+- Do not publish port 5000 to the public internet without a reverse proxy; the app now has its own login, but that is not a substitute for edge TLS/access control.
 - Person detection uses CPU. Four HD main-streams is heavy; a camera **sub-stream** (e.g. Hikvision channel `102`) is easier on the server.
-- Passwords are stored in `data/cameras.json`.
+- Camera passwords are **encrypted at rest** and unlocked with the dashboard login password (see [Security & login](#security--login)).
 
 ---
 
