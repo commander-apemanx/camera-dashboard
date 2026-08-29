@@ -100,6 +100,21 @@ Also planned alongside GPU work:
 
 ## Later / explore
 
+### Areas (multi-page organisation)
+
+Organise cameras into named **Areas** — separate dashboard pages, each holding up to **4 cameras** (same 2×2 grid as today).
+
+Examples: *Front garden*, *Driveway*, *Inside*, *Garage*.
+
+Likely work:
+
+- Create / rename / reorder Areas
+- Assign cameras to an Area (a camera belongs to one Area page)
+- Navigate between Area pages without rebuilding streams awkwardly
+- Scales naturally with the “up to 32 cameras” goal (e.g. eight Areas × 4)
+
+### Other
+
 - Round-robin or lighter models when GPU is absent but camera count is high
 - Encrypted config export / import
 - Unraid-friendly GPU and encrypted-volume defaults
@@ -130,6 +145,7 @@ Also planned alongside GPU work:
 | GPU detection (NVIDIA / AMD / Intel) | [#4](https://github.com/commander-apemanx/camera-dashboard/issues/4) |
 | Sub-streams / stream efficiency | [#5](https://github.com/commander-apemanx/camera-dashboard/issues/5) |
 | Tests and CI | [#6](https://github.com/commander-apemanx/camera-dashboard/issues/6) |
+| Areas (pages of 4 cameras) | [#7](https://github.com/commander-apemanx/camera-dashboard/issues/7) |
 | Milestone | [Roadmap: scale, GPU, encryption, security](https://github.com/commander-apemanx/camera-dashboard/milestone/1) |
 
 License remains **GNU GPLv3** — see [LICENSE](LICENSE).
